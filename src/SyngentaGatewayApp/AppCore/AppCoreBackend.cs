@@ -36,6 +36,14 @@ namespace SyngentaGatewayApp.AppCore
         string PrinterPort = Environment.GetEnvironmentVariable("PRINTER_PORT");
         string name = "Printer";
 
+
+
+
+
+
+
+
+
         public static AppCore Ins
         {
             get
@@ -54,6 +62,7 @@ namespace SyngentaGatewayApp.AppCore
 
         public async Task Init()
         {
+            CreateLog();
             StartShowUI();
         }
         
@@ -62,8 +71,12 @@ namespace SyngentaGatewayApp.AppCore
 
 
 
-
-
+        /// <summary>
+        /// Open Gateway Server
+        /// </summary>
+        /// <param name="host"></param>
+        /// <param name="port"></param>
+        /// <returns></returns>
         public async Task InitOpenServer(string host, int port)
         {
             try
@@ -75,14 +88,11 @@ namespace SyngentaGatewayApp.AppCore
                 _AppServer = new CommonTCPServer();
                 if (string.IsNullOrWhiteSpace(host) && string.IsNullOrWhiteSpace(port.ToString()))
                 {
-
-                    //host = _AppServer.GetLocalIPAddress();
                     host = IpAddress;
                     port = int.Parse(Port);
                 }
 
                 _AppServer.Init(host, port, true);
-                //_AppServer.OnClientSend += _AppServer_OnClientSend;
                 _AppServer.OnDataReceived += _AppServer_OnDataReceived;
                 _AppServer.Start();
                 ServerStatus = true;
@@ -92,10 +102,11 @@ namespace SyngentaGatewayApp.AppCore
             {
                 Console.WriteLine(ex.Message + ex.StackTrace.ToString());
                 ServerStatus = false;
+                WriteLogToFile(ex.Message + ex.StackTrace.ToString());
                 throw ex;
+
             }
         }
-
         private async Task _AppServer_OnDataReceived(object? sender, DataReceivedEventArgs bytesReceive)
         {
             try
@@ -103,30 +114,23 @@ namespace SyngentaGatewayApp.AppCore
                 string ReceivedDataString = Encoding.ASCII.GetString(bytesReceive.Data.Array);
                 byte[] ReceivedDataByte = Encoding.ASCII.GetBytes(ReceivedDataString);
                 Data = ReceivedDataByte;
-                SendToPrinter(Data);
+                if (ReceivedDataString.Contains("LOT")) 
+                {
+                    // reset PLC
+                }
+                SendToPrinter(bytesReceive.Data.Array);
+                WriteLogToFile(ReceivedDataString);
                 //_AppServer.Send(bytesReceive.IpPort, Data);
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message + ex.StackTrace.ToString());
+                WriteLogToFile(ex.Message + ex.StackTrace.ToString());
                 throw ex;
             }
         }
-
-        //private async Task _AppServer_OnClientSend(object sender, DataSentEventArgs bytesSent)
-        //{
-        //    try
-        //    {
-
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Console.WriteLine(ex.Message + ex.StackTrace.ToString());
-        //        throw ex;
-        //    }
-        //}
         public void StopServer()
-        {
+         {
             _AppServer.Dispose();
         }
         public void SendToClient(byte[] Data)
@@ -139,6 +143,16 @@ namespace SyngentaGatewayApp.AppCore
         }
 
 
+
+
+
+
+
+        /// <summary>
+        /// Printer Connection
+        /// </summary>
+        /// <param name="host"></param>
+        /// <param name="port"></param>
         public async void InitConnectPrinter(string host, int port)
         {
             try
@@ -161,24 +175,33 @@ namespace SyngentaGatewayApp.AppCore
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message + ex.StackTrace.ToString());
+                WriteLogToFile(ex.Message + ex.StackTrace.ToString());
                 throw ex;
             }
         }
-
         private void _Printer_OnDataReceive(object? sender, SuperSimpleTcp.DataReceivedEventArgs e)
         {
-            string ReceivedDataString = Encoding.ASCII.GetString(e.Data.Array);
-            byte[] ReceivedDataByte = Encoding.ASCII.GetBytes(ReceivedDataString);
-            PrinterData = ReceivedDataByte;
-            SendToClient(PrinterData);
+            try
+            {
+                string ReceivedDataString = Encoding.ASCII.GetString(e.Data.Array);
+                byte[] ReceivedDataByte = Encoding.ASCII.GetBytes(ReceivedDataString);
+                PrinterData = ReceivedDataByte;
+                SendToClient(e.Data.Array);
+                WriteLogToFile(ReceivedDataString);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message + ex.StackTrace.ToString());
+                WriteLogToFile(ex.Message + ex.StackTrace.ToString());
+                throw ex;
+            }
+            
         }
-
         public void DisconnectPrinter()
         {
             _Printer.Disconnect();
             PrinterStatus = false;
         }
-
         public void SendToPrinter(byte[] SendData)
         {
             try
@@ -195,12 +218,55 @@ namespace SyngentaGatewayApp.AppCore
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message + ex.StackTrace.ToString());
+                WriteLogToFile(ex.Message + ex.StackTrace.ToString());
                 throw ex;
             }
 
         }
 
 
+
+
+        /// <summary>
+        /// Save Log
+        /// </summary>
+        public void CreateLog()
+        {
+            lock (this)
+            {
+                string logFilePath = $"{Environment.GetEnvironmentVariable("FOLDER_PATH")}log_{System.DateTime.Now.ToString("yyyyMMdd")}.txt";
+                try
+                {
+                    if (!File.Exists(logFilePath))
+                    {
+                        using (var stream = File.Create(logFilePath)) { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLogToFile(ex.Message + ex.StackTrace.ToString());
+                    throw ex;
+                }
+            }
+
+        }
+        public void WriteLogToFile(string logEntry)
+        {
+            lock (this)
+            {
+                try
+                {
+                    string logFilePath = $"{Environment.GetEnvironmentVariable("FOLDER_PATH")}log_{System.DateTime.Now.ToString("yyyyMMdd")}.txt";
+                    File.AppendAllText(logFilePath, logEntry + Environment.NewLine);
+                }
+                catch (Exception ex)
+                {
+                    WriteLogToFile(ex.Message + ex.StackTrace.ToString());
+                    throw ex;
+                }
+            }
+
+        }
 
 
 
